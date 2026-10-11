@@ -1,5 +1,6 @@
 package com.minibank.repository;
 
+import java.util.List;
 import java.util.Optional;
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,6 +15,8 @@ import jakarta.persistence.LockModeType;
 public interface AccountRepository extends JpaRepository<Account, Long> {
 
     Optional<Account> findByAccountNumber(String accountNumber);
+
+    List<Account> findByOwnerUsername(String username);
 
     boolean existsByAccountNumber(String accountNumber);
 

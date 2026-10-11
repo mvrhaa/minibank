@@ -9,6 +9,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import java.math.BigDecimal;
+import java.security.Principal;
+import java.util.List;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -20,6 +22,7 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import com.minibank.domain.Account;
 import com.minibank.domain.User;
+import com.minibank.exception.AccountAccessDeniedException;
 import com.minibank.exception.AccountNotFoundException;
 import com.minibank.exception.InsufficientFundsException;
 import com.minibank.service.AccountService;
@@ -31,6 +34,8 @@ class AccountControllerTest {
     private static final String ALICE = "100000000001";
     private static final String BOB = "100000000002";
 
+    private final Principal alice = () -> "alice";
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -41,45 +46,51 @@ class AccountControllerTest {
     void openAccountReturnsCreated() throws Exception {
         when(accountService.openAccount("alice")).thenReturn(account(ALICE, "0.00"));
 
-        mockMvc.perform(post("/api/accounts")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"ownerUsername\": \"alice\"}"))
+        mockMvc.perform(post("/api/accounts").principal(alice))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.accountNumber").value(ALICE));
     }
 
     @Test
-    void openAccountWithBlankOwnerReturnsBadRequest() throws Exception {
-        mockMvc.perform(post("/api/accounts")
-                        .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"ownerUsername\": \"\"}"))
-                .andExpect(status().isBadRequest());
+    void getMyAccountsReturnsList() throws Exception {
+        when(accountService.getAccountsOf("alice")).thenReturn(List.of(account(ALICE, "42.50")));
 
-        verifyNoInteractions(accountService);
+        mockMvc.perform(get("/api/accounts").principal(alice))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].accountNumber").value(ALICE))
+                .andExpect(jsonPath("$[0].balance").value(42.50));
     }
 
     @Test
     void getAccountReturnsBalance() throws Exception {
-        when(accountService.getAccount(ALICE)).thenReturn(account(ALICE, "42.50"));
+        when(accountService.getAccount(ALICE, "alice")).thenReturn(account(ALICE, "42.50"));
 
-        mockMvc.perform(get("/api/accounts/" + ALICE))
+        mockMvc.perform(get("/api/accounts/" + ALICE).principal(alice))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.balance").value(42.50));
     }
 
     @Test
     void getUnknownAccountReturnsNotFound() throws Exception {
-        when(accountService.getAccount(ALICE)).thenThrow(new AccountNotFoundException(ALICE));
+        when(accountService.getAccount(ALICE, "alice")).thenThrow(new AccountNotFoundException(ALICE));
 
-        mockMvc.perform(get("/api/accounts/" + ALICE))
+        mockMvc.perform(get("/api/accounts/" + ALICE).principal(alice))
                 .andExpect(status().isNotFound());
     }
 
     @Test
-    void depositReturnsNewBalance() throws Exception {
-        when(accountService.deposit(ALICE, new BigDecimal("25.00"))).thenReturn(account(ALICE, "25.00"));
+    void getSomeoneElsesAccountReturnsForbidden() throws Exception {
+        when(accountService.getAccount(BOB, "alice")).thenThrow(new AccountAccessDeniedException(BOB));
 
-        mockMvc.perform(post("/api/accounts/" + ALICE + "/deposit")
+        mockMvc.perform(get("/api/accounts/" + BOB).principal(alice))
+                .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void depositReturnsNewBalance() throws Exception {
+        when(accountService.deposit(ALICE, new BigDecimal("25.00"), "alice")).thenReturn(account(ALICE, "25.00"));
+
+        mockMvc.perform(post("/api/accounts/" + ALICE + "/deposit").principal(alice)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amount\": 25.00}"))
                 .andExpect(status().isOk())
@@ -88,7 +99,7 @@ class AccountControllerTest {
 
     @Test
     void depositWithNegativeAmountReturnsBadRequest() throws Exception {
-        mockMvc.perform(post("/api/accounts/" + ALICE + "/deposit")
+        mockMvc.perform(post("/api/accounts/" + ALICE + "/deposit").principal(alice)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amount\": -5}"))
                 .andExpect(status().isBadRequest());
@@ -98,9 +109,9 @@ class AccountControllerTest {
 
     @Test
     void withdrawWithInsufficientFundsReturnsBadRequest() throws Exception {
-        when(accountService.withdraw(any(), any())).thenThrow(new InsufficientFundsException(ALICE));
+        when(accountService.withdraw(any(), any(), any())).thenThrow(new InsufficientFundsException(ALICE));
 
-        mockMvc.perform(post("/api/accounts/" + ALICE + "/withdraw")
+        mockMvc.perform(post("/api/accounts/" + ALICE + "/withdraw").principal(alice)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amount\": 25.00}"))
                 .andExpect(status().isBadRequest());
@@ -108,9 +119,10 @@ class AccountControllerTest {
 
     @Test
     void transferReturnsSourceAccount() throws Exception {
-        when(accountService.transfer(ALICE, BOB, new BigDecimal("30.00"))).thenReturn(account(ALICE, "70.00"));
+        when(accountService.transfer(ALICE, BOB, new BigDecimal("30.00"), "alice"))
+                .thenReturn(account(ALICE, "70.00"));
 
-        mockMvc.perform(post("/api/accounts/transfer")
+        mockMvc.perform(post("/api/accounts/transfer").principal(alice)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(transferJson("30.00")))
                 .andExpect(status().isOk())
@@ -120,7 +132,7 @@ class AccountControllerTest {
 
     @Test
     void transferWithNegativeAmountReturnsBadRequest() throws Exception {
-        mockMvc.perform(post("/api/accounts/transfer")
+        mockMvc.perform(post("/api/accounts/transfer").principal(alice)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(transferJson("-30.00")))
                 .andExpect(status().isBadRequest());
@@ -130,9 +142,9 @@ class AccountControllerTest {
 
     @Test
     void transferToUnknownAccountReturnsNotFound() throws Exception {
-        when(accountService.transfer(any(), any(), any())).thenThrow(new AccountNotFoundException(BOB));
+        when(accountService.transfer(any(), any(), any(), any())).thenThrow(new AccountNotFoundException(BOB));
 
-        mockMvc.perform(post("/api/accounts/transfer")
+        mockMvc.perform(post("/api/accounts/transfer").principal(alice)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(transferJson("30.00")))
                 .andExpect(status().isNotFound());
