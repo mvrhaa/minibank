@@ -1,0 +1,16 @@
+spring:
+  application:
+    name: MiniBank
+
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/minibank}
+    username: ${DB_USERNAME:minibank}
+    password: ${DB_PASSWORD:minibank}
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
