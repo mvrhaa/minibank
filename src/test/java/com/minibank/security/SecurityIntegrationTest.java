@@ -2,8 +2,11 @@ package com.minibank.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -90,7 +93,9 @@ class SecurityIntegrationTest extends PostgresIntegrationTest {
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerJson("alice", "new@example.com", "secret1234")))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.message").value("Username is already taken"));
     }
 
     @Test
@@ -112,7 +117,11 @@ class SecurityIntegrationTest extends PostgresIntegrationTest {
     @Test
     void requestWithoutLoginReturnsUnauthorized() throws Exception {
         mockMvc.perform(get("/api/accounts"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").value("Username or password is missing or incorrect"))
+                .andExpect(jsonPath("$.path").value("/api/accounts"));
         mockMvc.perform(get("/api/accounts/" + aliceAccount))
                 .andExpect(status().isUnauthorized());
     }
@@ -172,6 +181,64 @@ class SecurityIntegrationTest extends PostgresIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amount\": 10.00}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void registerWithSameUsernameInDifferentCaseReturnsConflict() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registerJson("ALICE", "new@example.com", "secret1234")))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void loginIgnoresUsernameCase() throws Exception {
+        mockMvc.perform(get("/api/accounts/" + aliceAccount).with(httpBasic("ALICE", PASSWORD)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void depositAboveMaximumBalanceReturnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/accounts/" + aliceAccount + "/deposit").with(httpBasic("alice", PASSWORD))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\": 99999999999999999}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").exists());
+    }
+
+    @Test
+    void unknownUrlReturnsNotFoundInStandardFormat() throws Exception {
+        mockMvc.perform(get("/api/nothing").with(httpBasic("alice", PASSWORD)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.path").value("/api/nothing"));
+    }
+
+    @Test
+    void unsupportedMethodReturnsMethodNotAllowedInStandardFormat() throws Exception {
+        mockMvc.perform(delete("/api/accounts/" + aliceAccount).with(httpBasic("alice", PASSWORD)))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.status").value(405))
+                .andExpect(jsonPath("$.message").exists());
+    }
+
+    @Test
+    void webPageIsOpenWithoutLogin() throws Exception {
+        mockMvc.perform(get("/index.html"))
+                .andExpect(status().isOk())
+                .andExpect(content().string(org.hamcrest.Matchers.containsString("<title>MiniBank</title>")));
+    }
+
+    @Test
+    void unauthorizedResponseAsksBrowserForLoginExceptForWebPageRequests() throws Exception {
+        mockMvc.perform(get("/api/accounts"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().exists("WWW-Authenticate"));
+
+        mockMvc.perform(get("/api/accounts").header("X-Requested-With", "XMLHttpRequest"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(header().doesNotExist("WWW-Authenticate"));
     }
 
     private String registerJson(String username, String email, String password) {

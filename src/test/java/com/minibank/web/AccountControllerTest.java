@@ -75,7 +75,12 @@ class AccountControllerTest {
         when(accountService.getAccount(ALICE, "alice")).thenThrow(new AccountNotFoundException(ALICE));
 
         mockMvc.perform(get("/api/accounts/" + ALICE).principal(alice))
-                .andExpect(status().isNotFound());
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.error").value("Not Found"))
+                .andExpect(jsonPath("$.message").value("Account not found: " + ALICE))
+                .andExpect(jsonPath("$.path").value("/api/accounts/" + ALICE))
+                .andExpect(jsonPath("$.timestamp").exists());
     }
 
     @Test
@@ -83,7 +88,9 @@ class AccountControllerTest {
         when(accountService.getAccount(BOB, "alice")).thenThrow(new AccountAccessDeniedException(BOB));
 
         mockMvc.perform(get("/api/accounts/" + BOB).principal(alice))
-                .andExpect(status().isForbidden());
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.message").value("You do not own account " + BOB));
     }
 
     @Test
@@ -102,7 +109,9 @@ class AccountControllerTest {
         mockMvc.perform(post("/api/accounts/" + ALICE + "/deposit").principal(alice)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amount\": -5}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("amount: must be greater than 0"));
 
         verifyNoInteractions(accountService);
     }
@@ -114,7 +123,9 @@ class AccountControllerTest {
         mockMvc.perform(post("/api/accounts/" + ALICE + "/withdraw").principal(alice)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amount\": 25.00}"))
-                .andExpect(status().isBadRequest());
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.status").value(400))
+                .andExpect(jsonPath("$.message").value("Insufficient funds in account " + ALICE));
     }
 
     @Test
@@ -148,6 +159,15 @@ class AccountControllerTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(transferJson("30.00")))
                 .andExpect(status().isNotFound());
+    }
+
+    @Test
+    void depositWithBrokenJsonReturnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/accounts/" + ALICE + "/deposit").principal(alice)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{not json"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").value("Request body is missing or not valid JSON"));
     }
 
     private String transferJson(String amount) {

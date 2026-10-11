@@ -1,8 +1,10 @@
 package com.minibank.service;
 
+import java.util.Locale;
+
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import com.minibank.domain.User;
 import com.minibank.exception.UserAlreadyExistsException;
@@ -19,16 +21,23 @@ public class UserService {
         this.passwordEncoder = passwordEncoder;
     }
 
-    @Transactional
     public User register(String username, String password, String fullName, String email) {
-        if (userRepository.existsByUsername(username)) {
+        String normalizedUsername = username.trim().toLowerCase(Locale.ROOT);
+        String normalizedEmail = email.trim().toLowerCase(Locale.ROOT);
+
+        if (userRepository.existsByUsername(normalizedUsername)) {
             throw new UserAlreadyExistsException("Username is already taken");
         }
-        if (userRepository.existsByEmail(email)) {
+        if (userRepository.existsByEmail(normalizedEmail)) {
             throw new UserAlreadyExistsException("Email is already registered");
         }
 
         String passwordHash = passwordEncoder.encode(password);
-        return userRepository.save(new User(username, passwordHash, fullName, email));
+        User user = new User(normalizedUsername, passwordHash, fullName, normalizedEmail);
+        try {
+            return userRepository.save(user);
+        } catch (DataIntegrityViolationException e) {
+            throw new UserAlreadyExistsException("Username or email is already registered");
+        }
     }
 }
