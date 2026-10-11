@@ -13,6 +13,16 @@ docker compose up -d
 
 The connection can be changed with the `DB_URL`, `DB_USERNAME` and `DB_PASSWORD` environment variables.
 
+## API
+
+| Method | Path                                     | Body                                               |
+|--------|------------------------------------------|----------------------------------------------------|
+| POST   | `/api/accounts`                          | `{"ownerUsername"}`                                |
+| GET    | `/api/accounts/{accountNumber}`          |                                                    |
+| POST   | `/api/accounts/{accountNumber}/deposit`  | `{"amount"}`                                       |
+| POST   | `/api/accounts/{accountNumber}/withdraw` | `{"amount"}`                                       |
+| POST   | `/api/accounts/transfer`                 | `{"fromAccountNumber","toAccountNumber","amount"}` |
+
 ## Tests
 
 ```sh
