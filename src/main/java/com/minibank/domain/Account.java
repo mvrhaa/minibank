@@ -5,6 +5,8 @@ import java.time.Instant;
 
 import org.hibernate.annotations.CreationTimestamp;
 
+import com.minibank.exception.InsufficientFundsException;
+
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -44,6 +46,17 @@ public class Account {
         this.accountNumber = accountNumber;
         this.owner = owner;
         this.balance = BigDecimal.ZERO;
+    }
+
+    public void credit(BigDecimal amount) {
+        balance = balance.add(amount);
+    }
+
+    public void debit(BigDecimal amount) {
+        if (balance.compareTo(amount) < 0) {
+            throw new InsufficientFundsException(accountNumber);
+        }
+        balance = balance.subtract(amount);
     }
 
     public Long getId() {
