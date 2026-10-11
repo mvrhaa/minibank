@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MiniBank</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --text:#1c2330; --muted:#667085; --line:#dfe3ea; --accent:#1f6feb; --ok:#147a3d; --bad:#b42318; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#0f141b; --card:#182029; --text:#e6eaf0; --muted:#93a0b4; --line:#2a3441; --accent:#5aa2ff; --ok:#4cc38a; --bad:#ff7b72; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:15px/1.45 -apple-system, "Segoe UI", sans-serif; }
+  main { max-width:1040px; margin:0 auto; padding:24px 16px 48px; display:grid; gap:16px; grid-template-columns:1fr 1fr; }
+  header { grid-column:1/-1; }
+  h1 { margin:0; font-size:24px; }
+  h2 { margin:0 0 12px; font-size:16px; }
+  p.sub { margin:0; color:var(--muted); }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; }
+  .wide { grid-column:1/-1; }
+  label { display:block; font-size:12px; color:var(--muted); margin:8px 0 3px; }
+  input, select { width:100%; padding:8px 10px; border:1px solid var(--line); border-radius:7px; background:var(--bg); color:var(--text); font:inherit; }
+  button { margin-top:12px; padding:8px 14px; border:0; border-radius:7px; background:var(--accent); color:#fff; font:inherit; font-weight:600; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--accent); border:1px solid var(--line); }
+  .row { display:flex; gap:10px; } .row > * { flex:1; }
+  .who { font-weight:600; }
+  .account { display:flex; justify-content:space-between; align-items:center; padding:12px; border:1px solid var(--line); border-radius:8px; margin-bottom:8px; }
+  .number { font-family:ui-monospace, Menlo, monospace; }
+  .balance { font-size:20px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .empty { color:var(--muted); }
+  #log { font-family:ui-monospace, Menlo, monospace; font-size:12.5px; max-height:340px; overflow:auto; }
+  .entry { padding:8px 0; border-bottom:1px solid var(--line); word-break:break-word; }
+  .ok { color:var(--ok); font-weight:700; } .bad { color:var(--bad); font-weight:700; }
+  @media (max-width:760px) { main { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>MiniBank</h1>
+  </header>
+
+  <section>
+    <h2>1. Log in</h2>
+    <div class="row">
+      <div><label>Username</label><input id="user"></div>
+      <div><label>Password</label><input id="pass" type="password"></div>
+    </div>
+    <button onclick="login()">Log in</button>
+    <p class="sub" style="margin-top:10px">Logged in as: <span class="who" id="who">nobody</span></p>
+  </section>
+
+  <section>
+    <h2>Register a new user</h2>
+    <div class="row">
+      <div><label>Username</label><input id="rUser" placeholder="carol"></div>
+      <div><label>Password (8+ characters)</label><input id="rPass" type="password"></div>
+    </div>
+    <div class="row">
+      <div><label>Full name</label><input id="rName" placeholder="Carol Example"></div>
+      <div><label>Email</label><input id="rEmail" placeholder="carol@example.com"></div>
+    </div>
+    <button onclick="register()">Register</button>
+  </section>
+
+  <section class="wide">
+    <h2>2. My accounts</h2>
+    <div id="accounts"><p class="empty">Log in to see accounts.</p></div>
+    <button onclick="openAccount()">Open a new account</button>
+    <button class="ghost" onclick="loadAccounts()">Refresh</button>
+  </section>
+
+  <section>
+    <h2>3. Deposit or withdraw</h2>
+    <label>Account</label><select id="dwAccount"></select>
+    <label>Amount</label><input id="dwAmount" value="25.00">
+    <button onclick="move('deposit')">Deposit</button>
+    <button class="ghost" onclick="move('withdraw')">Withdraw</button>
+  </section>
+
+  <section>
+    <h2>4. Transfer</h2>
+    <label>From my account</label><select id="tFrom"></select>
+    <label>To account number</label><input id="tTo" placeholder="12 digit account number">
+    <label>Amount</label><input id="tAmount" value="10.00">
+    <button onclick="transfer()">Transfer</button>
+  </section>
+
+  <section class="wide">
+    <h2>What the API answered</h2>
+    <div id="log"><p class="empty">Nothing yet.</p></div>
+  </section>
+</main>
+
+<script>
+let auth = null;
+const $ = id => document.getElementById(id);
+
+async function call(method, path, body, useAuth = true) {
+  const headers = { "X-Requested-With": "XMLHttpRequest" };
+  if (useAuth && auth) headers["Authorization"] = auth;
+  if (body) headers["Content-Type"] = "application/json";
+  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : undefined });
+  const text = await res.text();
+  let json = null;
+  try { json = JSON.parse(text); } catch (e) {}
+  addLog(method, path, res.status, text);
+  return { status: res.status, ok: res.ok, json };
+}
+
+function addLog(method, path, status, text) {
+  const log = $("log");
+  if (log.querySelector(".empty")) log.innerHTML = "";
+  const entry = document.createElement("div");
+  entry.className = "entry";
+  const head = document.createElement("div");
+  const code = document.createElement("span");
+  code.className = status < 400 ? "ok" : "bad";
+  code.textContent = status;
+  head.append(method + " " + path + "  →  ", code);
+  const bodyLine = document.createElement("div");
+  bodyLine.textContent = text;
+  entry.append(head, bodyLine);
+  log.prepend(entry);
+}
+
+async function login() {
+  auth = "Basic " + btoa($("user").value + ":" + $("pass").value);
+  const ok = await loadAccounts();
+  $("who").textContent = ok ? $("user").value.toLowerCase() : "nobody (login failed)";
+  if (!ok) auth = null;
+}
+
+async function loadAccounts() {
+  const res = await call("GET", "/api/accounts");
+  const box = $("accounts");
+  if (!res.ok) { box.innerHTML = '<p class="empty">Could not load accounts.</p>'; return false; }
+  box.innerHTML = "";
+  for (const select of [$("dwAccount"), $("tFrom")]) select.innerHTML = "";
+  if (res.json.length === 0) box.innerHTML = '<p class="empty">No accounts yet. Open one below.</p>';
+  for (const account of res.json) {
+    const row = document.createElement("div");
+    row.className = "account";
+    const number = document.createElement("span");
+    number.className = "number";
+    number.textContent = account.accountNumber;
+    const balance = document.createElement("span");
+    balance.className = "balance";
+    balance.textContent = Number(account.balance).toFixed(2);
+    row.append(number, balance);
+    box.append(row);
+    for (const select of [$("dwAccount"), $("tFrom")]) select.add(new Option(account.accountNumber, account.accountNumber));
+  }
+  return true;
+}
+
+async function register() {
+  await call("POST", "/api/auth/register",
+    { username: $("rUser").value, password: $("rPass").value, fullName: $("rName").value, email: $("rEmail").value }, false);
+}
+
+async function openAccount() { await call("POST", "/api/accounts"); await loadAccounts(); }
+
+async function move(kind) {
+  await call("POST", "/api/accounts/" + $("dwAccount").value + "/" + kind, { amount: Number($("dwAmount").value) });
+  await loadAccounts();
+}
+
+async function transfer() {
+  await call("POST", "/api/accounts/transfer",
+    { fromAccountNumber: $("tFrom").value, toAccountNumber: $("tTo").value.trim(), amount: Number($("tAmount").value) });
+  await loadAccounts();
+}
+</script>
+</body>
+</html>

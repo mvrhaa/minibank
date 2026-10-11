@@ -13,6 +13,10 @@ docker compose up -d
 
 The connection can be changed with the `DB_URL`, `DB_USERNAME` and `DB_PASSWORD` environment variables.
 
+## Web page
+
+Open `http://localhost:8080` in a browser for a simple page where you can register, log in, open accounts, deposit, withdraw and transfer.
+
 ## API
 
 Register first, then send your username and password with every request using HTTP Basic authentication.

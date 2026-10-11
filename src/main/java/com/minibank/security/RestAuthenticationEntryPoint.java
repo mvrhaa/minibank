@@ -33,7 +33,9 @@ public class RestAuthenticationEntryPoint implements AuthenticationEntryPoint {
                 "Username or password is missing or incorrect", request.getRequestURI());
 
         response.setStatus(status.value());
-        response.setHeader("WWW-Authenticate", "Basic realm=\"MiniBank\"");
+        if (!"XMLHttpRequest".equals(request.getHeader("X-Requested-With"))) {
+            response.setHeader("WWW-Authenticate", "Basic realm=\"MiniBank\"");
+        }
         response.setContentType(MediaType.APPLICATION_JSON_VALUE);
         response.getWriter().write(objectMapper.writeValueAsString(body));
     }
