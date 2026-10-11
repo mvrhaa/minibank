@@ -6,6 +6,7 @@ import java.time.Instant;
 import org.hibernate.annotations.CreationTimestamp;
 
 import com.minibank.exception.InsufficientFundsException;
+import com.minibank.exception.InvalidAmountException;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -20,6 +21,8 @@ import jakarta.persistence.Table;
 @Entity
 @Table(name = "accounts")
 public class Account {
+
+    public static final BigDecimal MAX_BALANCE = new BigDecimal("99999999999999999.99");
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -49,7 +52,11 @@ public class Account {
     }
 
     public void credit(BigDecimal amount) {
-        balance = balance.add(amount);
+        BigDecimal newBalance = balance.add(amount);
+        if (newBalance.compareTo(MAX_BALANCE) > 0) {
+            throw new InvalidAmountException("Balance of account " + accountNumber + " would exceed the maximum");
+        }
+        balance = newBalance;
     }
 
     public void debit(BigDecimal amount) {

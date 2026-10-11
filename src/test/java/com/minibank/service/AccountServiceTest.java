@@ -186,6 +186,15 @@ class AccountServiceTest {
     }
 
     @Test
+    void depositFailsWhenBalanceWouldExceedMaximum() {
+        when(accountRepository.findByAccountNumberForUpdate(ALICE_NUMBER)).thenReturn(Optional.of(aliceAccount));
+
+        assertThatThrownBy(() -> accountService.deposit(ALICE_NUMBER, Account.MAX_BALANCE, "alice"))
+                .isInstanceOf(InvalidAmountException.class);
+        assertThat(aliceAccount.getBalance()).isEqualByComparingTo("100.00");
+    }
+
+    @Test
     void withdrawTakesMoney() {
         when(accountRepository.findByAccountNumberForUpdate(ALICE_NUMBER)).thenReturn(Optional.of(aliceAccount));
 

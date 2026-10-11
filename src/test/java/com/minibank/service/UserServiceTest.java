@@ -12,6 +12,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
 import com.minibank.domain.User;
@@ -63,5 +64,27 @@ class UserServiceTest {
         assertThatThrownBy(() -> userService.register("alice", "password123", "Alice Example", "alice@example.com"))
                 .isInstanceOf(UserAlreadyExistsException.class);
         verify(userRepository, never()).save(any());
+    }
+
+    @Test
+    void registerStoresUsernameAndEmailInLowerCase() {
+        when(passwordEncoder.encode("password123")).thenReturn("hashed-password");
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        User user = userService.register("Alice", "password123", "Alice Example", "Alice@Example.com");
+
+        assertThat(user.getUsername()).isEqualTo("alice");
+        assertThat(user.getEmail()).isEqualTo("alice@example.com");
+        verify(userRepository).existsByUsername("alice");
+        verify(userRepository).existsByEmail("alice@example.com");
+    }
+
+    @Test
+    void registerFailsWhenDatabaseRejectsDuplicate() {
+        when(passwordEncoder.encode("password123")).thenReturn("hashed-password");
+        when(userRepository.save(any(User.class))).thenThrow(new DataIntegrityViolationException("duplicate"));
+
+        assertThatThrownBy(() -> userService.register("alice", "password123", "Alice Example", "alice@example.com"))
+                .isInstanceOf(UserAlreadyExistsException.class);
     }
 }

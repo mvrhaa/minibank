@@ -2,6 +2,7 @@ package com.minibank.security;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.httpBasic;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -178,6 +179,46 @@ class SecurityIntegrationTest extends PostgresIntegrationTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"amount\": 10.00}"))
                 .andExpect(status().isForbidden());
+    }
+
+    @Test
+    void registerWithSameUsernameInDifferentCaseReturnsConflict() throws Exception {
+        mockMvc.perform(post("/api/auth/register")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(registerJson("ALICE", "new@example.com", "secret1234")))
+                .andExpect(status().isConflict());
+    }
+
+    @Test
+    void loginIgnoresUsernameCase() throws Exception {
+        mockMvc.perform(get("/api/accounts/" + aliceAccount).with(httpBasic("ALICE", PASSWORD)))
+                .andExpect(status().isOk());
+    }
+
+    @Test
+    void depositAboveMaximumBalanceReturnsBadRequest() throws Exception {
+        mockMvc.perform(post("/api/accounts/" + aliceAccount + "/deposit").with(httpBasic("alice", PASSWORD))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"amount\": 99999999999999999}"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.message").exists());
+    }
+
+    @Test
+    void unknownUrlReturnsNotFoundInStandardFormat() throws Exception {
+        mockMvc.perform(get("/api/nothing").with(httpBasic("alice", PASSWORD)))
+                .andExpect(status().isNotFound())
+                .andExpect(jsonPath("$.status").value(404))
+                .andExpect(jsonPath("$.message").exists())
+                .andExpect(jsonPath("$.path").value("/api/nothing"));
+    }
+
+    @Test
+    void unsupportedMethodReturnsMethodNotAllowedInStandardFormat() throws Exception {
+        mockMvc.perform(delete("/api/accounts/" + aliceAccount).with(httpBasic("alice", PASSWORD)))
+                .andExpect(status().isMethodNotAllowed())
+                .andExpect(jsonPath("$.status").value(405))
+                .andExpect(jsonPath("$.message").exists());
     }
 
     private String registerJson(String username, String email, String password) {
