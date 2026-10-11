@@ -90,7 +90,9 @@ class SecurityIntegrationTest extends PostgresIntegrationTest {
         mockMvc.perform(post("/api/auth/register")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(registerJson("alice", "new@example.com", "secret1234")))
-                .andExpect(status().isConflict());
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.status").value(409))
+                .andExpect(jsonPath("$.message").value("Username is already taken"));
     }
 
     @Test
@@ -112,7 +114,11 @@ class SecurityIntegrationTest extends PostgresIntegrationTest {
     @Test
     void requestWithoutLoginReturnsUnauthorized() throws Exception {
         mockMvc.perform(get("/api/accounts"))
-                .andExpect(status().isUnauthorized());
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.status").value(401))
+                .andExpect(jsonPath("$.error").value("Unauthorized"))
+                .andExpect(jsonPath("$.message").value("Username or password is missing or incorrect"))
+                .andExpect(jsonPath("$.path").value("/api/accounts"));
         mockMvc.perform(get("/api/accounts/" + aliceAccount))
                 .andExpect(status().isUnauthorized());
     }
